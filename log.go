@@ -316,11 +316,11 @@ func (b *Backend) printf(lvl, tag string, format string, args ...any) {
 // Backend b.  A tag describes the subsystem and is included in all log
 // messages.  The logger uses the info verbosity level by default.
 func (b *Backend) Logger(subsystemTag string) Logger {
-	return &slog{LevelInfo, subsystemTag, b}
+	return &subLog{LevelInfo, subsystemTag, b}
 }
 
-// slog is a subsystem logger for a Backend.  Implements the Logger interface.
-type slog struct {
+// subLog is a subsystem logger for a Backend.  Implements the Logger interface.
+type subLog struct {
 	lvl Level // atomic
 	tag string
 	b   *Backend
@@ -330,7 +330,7 @@ type slog struct {
 // the prefix as necessary, and writes to log with LevelTrace.
 //
 // This is part of the Logger interface implementation.
-func (l *slog) Trace(args ...any) {
+func (l *subLog) Trace(args ...any) {
 	lvl := l.Level()
 	if lvl <= LevelTrace {
 		l.b.print("TRC", l.tag, args...)
@@ -341,7 +341,7 @@ func (l *slog) Trace(args ...any) {
 // necessary, and writes to log with LevelTrace.
 //
 // This is part of the Logger interface implementation.
-func (l *slog) Tracef(format string, args ...any) {
+func (l *subLog) Tracef(format string, args ...any) {
 	lvl := l.Level()
 	if lvl <= LevelTrace {
 		l.b.printf("TRC", l.tag, format, args...)
@@ -352,7 +352,7 @@ func (l *slog) Tracef(format string, args ...any) {
 // the prefix as necessary, and writes to log with LevelDebug.
 //
 // This is part of the Logger interface implementation.
-func (l *slog) Debug(args ...any) {
+func (l *subLog) Debug(args ...any) {
 	lvl := l.Level()
 	if lvl <= LevelDebug {
 		l.b.print("DBG", l.tag, args...)
@@ -363,7 +363,7 @@ func (l *slog) Debug(args ...any) {
 // necessary, and writes to log with LevelDebug.
 //
 // This is part of the Logger interface implementation.
-func (l *slog) Debugf(format string, args ...any) {
+func (l *subLog) Debugf(format string, args ...any) {
 	lvl := l.Level()
 	if lvl <= LevelDebug {
 		l.b.printf("DBG", l.tag, format, args...)
@@ -374,7 +374,7 @@ func (l *slog) Debugf(format string, args ...any) {
 // the prefix as necessary, and writes to log with LevelInfo.
 //
 // This is part of the Logger interface implementation.
-func (l *slog) Info(args ...any) {
+func (l *subLog) Info(args ...any) {
 	lvl := l.Level()
 	if lvl <= LevelInfo {
 		l.b.print("INF", l.tag, args...)
@@ -385,7 +385,7 @@ func (l *slog) Info(args ...any) {
 // necessary, and writes to log with LevelInfo.
 //
 // This is part of the Logger interface implementation.
-func (l *slog) Infof(format string, args ...any) {
+func (l *subLog) Infof(format string, args ...any) {
 	lvl := l.Level()
 	if lvl <= LevelInfo {
 		l.b.printf("INF", l.tag, format, args...)
@@ -396,7 +396,7 @@ func (l *slog) Infof(format string, args ...any) {
 // the prefix as necessary, and writes to log with LevelWarn.
 //
 // This is part of the Logger interface implementation.
-func (l *slog) Warn(args ...any) {
+func (l *subLog) Warn(args ...any) {
 	lvl := l.Level()
 	if lvl <= LevelWarn {
 		l.b.print("WRN", l.tag, args...)
@@ -407,7 +407,7 @@ func (l *slog) Warn(args ...any) {
 // necessary, and writes to log with LevelWarn.
 //
 // This is part of the Logger interface implementation.
-func (l *slog) Warnf(format string, args ...any) {
+func (l *subLog) Warnf(format string, args ...any) {
 	lvl := l.Level()
 	if lvl <= LevelWarn {
 		l.b.printf("WRN", l.tag, format, args...)
@@ -418,7 +418,7 @@ func (l *slog) Warnf(format string, args ...any) {
 // the prefix as necessary, and writes to log with LevelError.
 //
 // This is part of the Logger interface implementation.
-func (l *slog) Error(args ...any) {
+func (l *subLog) Error(args ...any) {
 	lvl := l.Level()
 	if lvl <= LevelError {
 		l.b.print("ERR", l.tag, args...)
@@ -429,7 +429,7 @@ func (l *slog) Error(args ...any) {
 // necessary, and writes to log with LevelError.
 //
 // This is part of the Logger interface implementation.
-func (l *slog) Errorf(format string, args ...any) {
+func (l *subLog) Errorf(format string, args ...any) {
 	lvl := l.Level()
 	if lvl <= LevelError {
 		l.b.printf("ERR", l.tag, format, args...)
@@ -440,7 +440,7 @@ func (l *slog) Errorf(format string, args ...any) {
 // the prefix as necessary, and writes to log with LevelCritical.
 //
 // This is part of the Logger interface implementation.
-func (l *slog) Critical(args ...any) {
+func (l *subLog) Critical(args ...any) {
 	lvl := l.Level()
 	if lvl <= LevelCritical {
 		l.b.print("CRT", l.tag, args...)
@@ -451,7 +451,7 @@ func (l *slog) Critical(args ...any) {
 // as necessary, and writes to log with LevelCritical.
 //
 // This is part of the Logger interface implementation.
-func (l *slog) Criticalf(format string, args ...any) {
+func (l *subLog) Criticalf(format string, args ...any) {
 	lvl := l.Level()
 	if lvl <= LevelCritical {
 		l.b.printf("CRT", l.tag, format, args...)
@@ -461,14 +461,14 @@ func (l *slog) Criticalf(format string, args ...any) {
 // Level returns the current logging level
 //
 // This is part of the Logger interface implementation.
-func (l *slog) Level() Level {
+func (l *subLog) Level() Level {
 	return Level(atomic.LoadUint32((*uint32)(&l.lvl)))
 }
 
 // SetLevel changes the logging level to the passed level.
 //
 // This is part of the Logger interface implementation.
-func (l *slog) SetLevel(level Level) {
+func (l *subLog) SetLevel(level Level) {
 	atomic.StoreUint32((*uint32)(&l.lvl), uint32(level))
 }
 
@@ -476,5 +476,5 @@ func (l *slog) SetLevel(level Level) {
 var Disabled Logger
 
 func init() {
-	Disabled = &slog{lvl: LevelOff, b: NewBackend(ioutil.Discard)}
+	Disabled = &subLog{lvl: LevelOff, b: NewBackend(ioutil.Discard)}
 }

@@ -34,8 +34,10 @@ package btclog
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"runtime"
 	"strings"
@@ -415,6 +417,63 @@ func (l *subLog) Criticalf(format string, args ...any) {
 	if lvl <= LevelCritical {
 		l.b.printf("CRT", l.tag, format, args...)
 	}
+}
+
+// TraceS writes a structured log with the given message and key-value pair
+// attributes with LevelTrace to the log.
+//
+// This is part of the Logger interface implementation.
+func (l *subLog) TraceS(_ context.Context, msg string, attrs ...any) {
+	l.Tracef(msg, attrs...)
+}
+
+// DebugS writes a structured log with the given message and key-value pair
+// attributes with LevelDebug to the log.
+//
+// This is part of the Logger interface implementation.
+func (l *subLog) DebugS(_ context.Context, msg string, attrs ...any) {
+	l.Debugf(msg, attrs...)
+}
+
+// InfoS writes a structured log with the given message and key-value pair
+// attributes with LevelInfo to the log.
+//
+// This is part of the Logger interface implementation.
+func (l *subLog) InfoS(_ context.Context, msg string, attrs ...any) {
+	l.Infof(msg, attrs...)
+}
+
+// WarnS writes a structured log with the given message and key-value pair
+// attributes with LevelWarn to the log.
+//
+// This is part of the Logger interface implementation.
+func (l *subLog) WarnS(_ context.Context, msg string, err error, attrs ...any) {
+	if err != nil {
+		attrs = append([]any{slog.String("err", err.Error())}, attrs...)
+	}
+	l.Warnf(msg, attrs...)
+}
+
+// ErrorS writes a structured log with the given message and key-value pair
+// attributes with LevelError to the log.
+//
+// This is part of the Logger interface implementation.
+func (l *subLog) ErrorS(_ context.Context, msg string, err error, attrs ...any) {
+	if err != nil {
+		attrs = append([]any{slog.String("err", err.Error())}, attrs...)
+	}
+	l.Errorf(msg, attrs...)
+}
+
+// CriticalS writes a structured log with the given message and key-value pair
+// attributes with LevelCritical to the log.
+//
+// This is part of the Logger interface implementation.
+func (l *subLog) CriticalS(_ context.Context, msg string, err error, attrs ...any) {
+	if err != nil {
+		attrs = append([]any{slog.String("err", err.Error())}, attrs...)
+	}
+	l.Criticalf(msg, attrs...)
 }
 
 // Level returns the current logging level

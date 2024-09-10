@@ -36,7 +36,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"runtime"
 	"strings"
@@ -72,57 +71,6 @@ func init() {
 			defaultFlags |= Lshortfile
 		}
 	}
-}
-
-// Level is the level at which a logger is configured.  All messages sent
-// to a level which is below the current level are filtered.
-type Level uint32
-
-// Level constants.
-const (
-	LevelTrace Level = iota
-	LevelDebug
-	LevelInfo
-	LevelWarn
-	LevelError
-	LevelCritical
-	LevelOff
-)
-
-// levelStrs defines the human-readable names for each logging level.
-var levelStrs = [...]string{"TRC", "DBG", "INF", "WRN", "ERR", "CRT", "OFF"}
-
-// LevelFromString returns a level based on the input string s.  If the input
-// can't be interpreted as a valid log level, the info level and false is
-// returned.
-func LevelFromString(s string) (l Level, ok bool) {
-	switch strings.ToLower(s) {
-	case "trace", "trc":
-		return LevelTrace, true
-	case "debug", "dbg":
-		return LevelDebug, true
-	case "info", "inf":
-		return LevelInfo, true
-	case "warn", "wrn":
-		return LevelWarn, true
-	case "error", "err":
-		return LevelError, true
-	case "critical", "crt":
-		return LevelCritical, true
-	case "off":
-		return LevelOff, true
-	default:
-		return LevelInfo, false
-	}
-}
-
-// String returns the tag of the logger used in log messages, or "OFF" if
-// the level will not produce any log output.
-func (l Level) String() string {
-	if l >= LevelOff {
-		return "OFF"
-	}
-	return levelStrs[l]
 }
 
 // NewBackend creates a logger backend from a Writer.
@@ -316,14 +264,25 @@ func (b *Backend) printf(lvl, tag string, format string, args ...any) {
 // Backend b.  A tag describes the subsystem and is included in all log
 // messages.  The logger uses the info verbosity level by default.
 func (b *Backend) Logger(subsystemTag string) Logger {
-	return &subLog{LevelInfo, subsystemTag, b}
+	return newSubLog(subsystemTag, b, LevelInfo)
 }
 
 // subLog is a subsystem logger for a Backend.  Implements the Logger interface.
 type subLog struct {
-	lvl Level // atomic
+	lvl atomic.Int32
 	tag string
 	b   *Backend
+}
+
+// newSubLog constructs a new subLog instance.
+func newSubLog(tag string, b *Backend, level Level) *subLog {
+	s := &subLog{
+		tag: tag,
+		b:   b,
+	}
+	s.lvl.Store(int32(level))
+
+	return s
 }
 
 // Trace formats message using the default formats for its operands, prepends
@@ -462,19 +421,19 @@ func (l *subLog) Criticalf(format string, args ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *subLog) Level() Level {
-	return Level(atomic.LoadUint32((*uint32)(&l.lvl)))
+	return Level(l.lvl.Load())
 }
 
 // SetLevel changes the logging level to the passed level.
 //
 // This is part of the Logger interface implementation.
 func (l *subLog) SetLevel(level Level) {
-	atomic.StoreUint32((*uint32)(&l.lvl), uint32(level))
+	l.lvl.Store(int32(level))
 }
 
 // Disabled is a Logger that will never output anything.
 var Disabled Logger
 
 func init() {
-	Disabled = &subLog{lvl: LevelOff, b: NewBackend(ioutil.Discard)}
+	Disabled = newSubLog("", NewBackend(io.Discard), LevelOff)
 }

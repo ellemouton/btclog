@@ -10,51 +10,51 @@ package btclog
 type Logger interface {
 	// Tracef formats message according to format specifier and writes to
 	// to log with LevelTrace.
-	Tracef(format string, params ...interface{})
+	Tracef(format string, params ...any)
 
 	// Debugf formats message according to format specifier and writes to
 	// log with LevelDebug.
-	Debugf(format string, params ...interface{})
+	Debugf(format string, params ...any)
 
 	// Infof formats message according to format specifier and writes to
 	// log with LevelInfo.
-	Infof(format string, params ...interface{})
+	Infof(format string, params ...any)
 
 	// Warnf formats message according to format specifier and writes to
 	// to log with LevelWarn.
-	Warnf(format string, params ...interface{})
+	Warnf(format string, params ...any)
 
 	// Errorf formats message according to format specifier and writes to
 	// to log with LevelError.
-	Errorf(format string, params ...interface{})
+	Errorf(format string, params ...any)
 
 	// Criticalf formats message according to format specifier and writes to
 	// log with LevelCritical.
-	Criticalf(format string, params ...interface{})
+	Criticalf(format string, params ...any)
 
 	// Trace formats message using the default formats for its operands
 	// and writes to log with LevelTrace.
-	Trace(v ...interface{})
+	Trace(v ...any)
 
 	// Debug formats message using the default formats for its operands
 	// and writes to log with LevelDebug.
-	Debug(v ...interface{})
+	Debug(v ...any)
 
 	// Info formats message using the default formats for its operands
 	// and writes to log with LevelInfo.
-	Info(v ...interface{})
+	Info(v ...any)
 
 	// Warn formats message using the default formats for its operands
 	// and writes to log with LevelWarn.
-	Warn(v ...interface{})
+	Warn(v ...any)
 
 	// Error formats message using the default formats for its operands
 	// and writes to log with LevelError.
-	Error(v ...interface{})
+	Error(v ...any)
 
 	// Critical formats message using the default formats for its operands
 	// and writes to log with LevelCritical.
-	Critical(v ...interface{})
+	Critical(v ...any)
 
 	// Level returns the current logging level.
 	Level() Level

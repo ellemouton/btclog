@@ -23,6 +23,10 @@ type handlerOpts struct {
 	withTimestamp     bool
 	timeSource        func() time.Time
 	callSiteSkipDepth int
+
+	styledLevel    func(Level) string
+	styledCallSite func(string, int) string
+	styledKey      func(string) string
 }
 
 // defaultHandlerOpts constructs a handlerOpts with default settings.
@@ -31,6 +35,15 @@ func defaultHandlerOpts() *handlerOpts {
 		flag:              defaultFlags,
 		withTimestamp:     true,
 		callSiteSkipDepth: 6,
+		styledLevel: func(level Level) string {
+			return fmt.Sprintf("[%s]", level)
+		},
+		styledCallSite: func(file string, line int) string {
+			return fmt.Sprintf("%s:%d", file, line)
+		},
+		styledKey: func(s string) string {
+			return s
+		},
 	}
 }
 
@@ -53,6 +66,29 @@ func WithTimeSource(fn func() time.Time) HandlerOption {
 func WithCallSiteSkipDepth(depth int) HandlerOption {
 	return func(opts *handlerOpts) {
 		opts.callSiteSkipDepth = depth
+	}
+}
+
+// WithStyledLevel can be used adjust the level string before it is printed.
+func WithStyledLevel(fn func(Level) string) HandlerOption {
+	return func(opts *handlerOpts) {
+		opts.styledLevel = fn
+	}
+}
+
+// WithStyledCallSite can be used adjust the call-site string before it is
+// printed.
+func WithStyledCallSite(fn func(file string, line int) string) HandlerOption {
+	return func(opts *handlerOpts) {
+		opts.styledCallSite = fn
+	}
+}
+
+// WithStyledKeys can be used adjust the key strings for any key-value
+// attribute pair.
+func WithStyledKeys(fn func(string) string) HandlerOption {
+	return func(opts *handlerOpts) {
+		opts.styledKey = fn
 	}
 }
 
@@ -250,17 +286,16 @@ func (d *DefaultHandler) appendAttr(buf *buffer, a slog.Attr) {
 }
 
 func (d *DefaultHandler) writeLevel(buf *buffer, level Level) {
-	str := fmt.Sprintf("[%s]", level)
-
-	buf.writeString(str)
+	buf.writeString(d.opts.styledLevel(level))
 }
 
 func (d *DefaultHandler) writeCallSite(buf *buffer, file string, line int) {
 	if file == "" {
 		return
 	}
+	buf.writeString(" ")
 
-	buf.writeString(fmt.Sprintf(" %s:%d", file, line))
+	buf.writeString(d.opts.styledCallSite(file, line))
 }
 
 func appendString(buf *buffer, str string) {
@@ -278,7 +313,7 @@ func (d *DefaultHandler) appendKey(buf *buffer, key string) {
 	}
 	key += "="
 
-	buf.writeString(key)
+	buf.writeString(d.opts.styledKey(key))
 }
 
 func appendValue(buf *buffer, v slog.Value) {

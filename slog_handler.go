@@ -6,10 +6,20 @@ import (
 	"io"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"unicode"
 	"unicode/utf8"
+)
+
+const (
+	resetSeq = "0"
+	boldSeq  = "1"
+	faintSeq = "2"
+
+	esc = '\x1b'
+	csi = string(esc) + "["
 )
 
 type HandlerOption func(*handlerOpts)
@@ -31,6 +41,12 @@ func defaultHandlerOpts() *handlerOpts {
 func WithCallerFlags(flags uint32) HandlerOption {
 	return func(b *handlerOpts) {
 		b.flag = flags
+	}
+}
+
+func WithStyledOutput() HandlerOption {
+	return func(opts *handlerOpts) {
+		opts.styled = true
 	}
 }
 
@@ -206,6 +222,23 @@ func (d *DefaultHandler) with(tag string, withCallstackOffset bool,
 	return &sl
 }
 
+func (d *DefaultHandler) styleString(s string, styles ...string) string {
+	if !d.opts.styled {
+		return s
+	}
+
+	if len(styles) == 0 {
+		return s
+	}
+
+	seq := strings.Join(styles, ";")
+	if seq == "" {
+		return s
+	}
+
+	return fmt.Sprintf("%s%sm%s%sm", csi, seq, s, csi+resetSeq)
+}
+
 func (d *DefaultHandler) appendAttr(buf *buffer, a slog.Attr) {
 	// Resolve the Attr's value before doing anything else.
 	a.Value = a.Value.Resolve()
@@ -222,7 +255,9 @@ func (d *DefaultHandler) appendAttr(buf *buffer, a slog.Attr) {
 func (d *DefaultHandler) writeLevel(buf *buffer, level Level) {
 	str := fmt.Sprintf("[%s] ", level)
 
-	buf.writeString(str)
+	buf.writeString(d.styleString(
+		str, boldSeq, string(level.ansiColoSeq())),
+	)
 }
 
 func (d *DefaultHandler) writeCallSite(buf *buffer, file string, line int) {
@@ -230,7 +265,9 @@ func (d *DefaultHandler) writeCallSite(buf *buffer, file string, line int) {
 		return
 	}
 
-	buf.writeString(fmt.Sprintf(" %s:%d", file, line))
+	buf.writeString(
+		d.styleString(fmt.Sprintf(" %s:%d", file, line), faintSeq),
+	)
 }
 
 func appendString(buf *buffer, str string) {
@@ -248,7 +285,7 @@ func (d *DefaultHandler) appendKey(buf *buffer, key string) {
 	}
 	key += "="
 
-	buf.writeString(key)
+	buf.writeString(d.styleString(key, faintSeq))
 }
 
 func appendValue(buf *buffer, v slog.Value) {

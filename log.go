@@ -1,284 +1,42 @@
-// Copyright (c) 2017 The btcsuite developers
-// Use of this source code is governed by an ISC
-// license that can be found in the LICENSE file.
-//
-// Copyright (c) 2009 The Go Authors. All rights reserved.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-//    * Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//    * Redistributions in binary form must reproduce the above
-// copyright notice, this list of conditions and the following disclaimer
-// in the documentation and/or other materials provided with the
-// distribution.
-//    * Neither the name of Google Inc. nor the names of its
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-// "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-// LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-// A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-// OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-// LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-// DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-// THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-// OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 package btclog
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
-	"runtime"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
 )
 
-// defaultFlags specifies changes to the default logger behavior.  It is set
-// during package init and configured using the LOGFLAGS environment variable.
-// New logger backends can override these default flags using WithFlags.
-var defaultFlags uint32
+// Disabled is a Logger that will never output anything.
+var Disabled Logger
 
-// Flags to modify Backend's behavior.
-const (
-	// Llongfile modifies the logger output to include full path and line number
-	// of the logging callsite, e.g. /a/b/c/main.go:123.
-	Llongfile uint32 = 1 << iota
+// Handler wraps the slog.Handler interface with a few more methods that we
+// need in order to satisfy the Logger interface.
+type Handler interface {
+	slog.Handler
 
-	// Lshortfile modifies the logger output to include filename and line number
-	// of the logging callsite, e.g. main.go:123.  Overrides Llongfile.
-	Lshortfile
-)
+	// Level returns the current logging level of the Handler.
+	Level() Level
 
-// Read logger flags from the LOGFLAGS environment variable.  Multiple flags can
-// be set at once, separated by commas.
-func init() {
-	for _, f := range strings.Split(os.Getenv("LOGFLAGS"), ",") {
-		switch f {
-		case "longfile":
-			defaultFlags |= Llongfile
-		case "shortfile":
-			defaultFlags |= Lshortfile
-		}
-	}
+	// SetLevel changes the logging level of the Handler to the passed
+	// level.
+	SetLevel(level Level)
+
+	// SubSystem returns a copy of the given handler but with the new tag.
+	SubSystem(tag string) Handler
 }
 
-// NewBackend creates a logger backend from a Writer.
-func NewBackend(w io.Writer, opts ...BackendOption) *Backend {
-	b := &Backend{w: w, flag: defaultFlags}
-	for _, o := range opts {
-		o(b)
-	}
-	return b
+// sLogger is an implementation of Logger backed by a structured sLogger.
+type sLogger struct {
+	Handler
+	logger *slog.Logger
 }
 
-// Backend is a logging backend.  Subsystems created from the backend write to
-// the backend's Writer.  Backend provides atomic writes to the Writer from all
-// subsystems.
-type Backend struct {
-	w    io.Writer
-	mu   sync.Mutex // ensures atomic writes
-	flag uint32
-}
-
-// BackendOption is a function used to modify the behavior of a Backend.
-type BackendOption func(b *Backend)
-
-// WithFlags configures a Backend to use the specified flags rather than using
-// the package's defaults as determined through the LOGFLAGS environment
-// variable.
-func WithFlags(flags uint32) BackendOption {
-	return func(b *Backend) {
-		b.flag = flags
-	}
-}
-
-// From stdlib log package.
-// Cheap integer to fixed-width decimal ASCII.  Give a negative width to avoid
-// zero-padding.
-func itoa(buf *buffer, i int, wid int) {
-	// Assemble decimal in reverse order.
-	var b [20]byte
-	bp := len(b) - 1
-	for i >= 10 || wid > 1 {
-		wid--
-		q := i / 10
-		b[bp] = byte('0' + i - q*10)
-		bp--
-		i = q
-	}
-	// i < 10
-	b[bp] = byte('0' + i)
-	buf.writeBytes(b[bp:])
-}
-
-// Appends a header in the default format 'YYYY-MM-DD hh:mm:ss.sss [LVL] TAG: '.
-// If either of the Lshortfile or Llongfile flags are specified, the file named
-// and line number are included after the tag and before the final colon.
-func formatHeader(buf *buffer, t time.Time, lvl, tag string, file string, line int) {
-	writeTimestamp(buf, t)
-
-	*buf = append(*buf, " ["...)
-	*buf = append(*buf, lvl...)
-	*buf = append(*buf, "] "...)
-	*buf = append(*buf, tag...)
-	if file != "" {
-		*buf = append(*buf, ' ')
-		*buf = append(*buf, file...)
-		*buf = append(*buf, ':')
-		itoa(buf, line, -1)
-	}
-	*buf = append(*buf, ": "...)
-}
-
-// writeTimestamp writes the date in the format 'YYYY-MM-DD hh:mm:ss.sss' to the
-// buffer.
-func writeTimestamp(buf *buffer, t time.Time) {
-	year, month, day := t.Date()
-	hour, min, sec := t.Clock()
-	ms := t.Nanosecond() / 1e6
-
-	itoa(buf, year, 4)
-	buf.writeByte('-')
-	itoa(buf, int(month), 2)
-	buf.writeByte('-')
-	itoa(buf, day, 2)
-	buf.writeByte(' ')
-	itoa(buf, hour, 2)
-	buf.writeByte(':')
-	itoa(buf, min, 2)
-	buf.writeByte(':')
-	itoa(buf, sec, 2)
-	buf.writeByte('.')
-	itoa(buf, ms, 3)
-	buf.writeByte(' ')
-}
-
-// calldepth is the call depth of the callsite function relative to the
-// caller of the subsystem logger.  It is used to recover the filename and line
-// number of the logging call if either the short or long file flags are
-// specified.
-const calldepth = 3
-
-// callsite returns the file name and line number of the callsite to the
-// subsystem logger.
-func callsite(flag uint32, skipDepth int) (string, int) {
-	_, file, line, ok := runtime.Caller(skipDepth)
-	if !ok {
-		return "???", 0
-	}
-	if flag&Lshortfile != 0 {
-		short := file
-		for i := len(file) - 1; i > 0; i-- {
-			if os.IsPathSeparator(file[i]) {
-				short = file[i+1:]
-				break
-			}
-		}
-		file = short
-	}
-	return file, line
-}
-
-// print outputs a log message to the writer associated with the backend after
-// creating a prefix for the given level and tag according to the formatHeader
-// function and formatting the provided arguments using the default formatting
-// rules.
-func (b *Backend) print(lvl, tag string, args ...any) {
-	t := time.Now() // get as early as possible
-
-	bytebuf := newBuffer()
-
-	var file string
-	var line int
-	if b.flag&(Lshortfile|Llongfile) != 0 {
-		file, line = callsite(b.flag, calldepth)
-	}
-
-	formatHeader(bytebuf, t, lvl, tag, file, line)
-	buf := bytes.NewBuffer(*bytebuf)
-	fmt.Fprintln(buf, args...)
-	*bytebuf = buf.Bytes()
-
-	b.mu.Lock()
-	b.w.Write(*bytebuf)
-	b.mu.Unlock()
-
-	bytebuf.free()
-}
-
-// printf outputs a log message to the writer associated with the backend after
-// creating a prefix for the given level and tag according to the formatHeader
-// function and formatting the provided arguments according to the given format
-// specifier.
-func (b *Backend) printf(lvl, tag string, format string, args ...any) {
-	t := time.Now() // get as early as possible
-
-	bytebuf := newBuffer()
-
-	var file string
-	var line int
-	if b.flag&(Lshortfile|Llongfile) != 0 {
-		file, line = callsite(b.flag, calldepth)
-	}
-
-	formatHeader(bytebuf, t, lvl, tag, file, line)
-	buf := bytes.NewBuffer(*bytebuf)
-	fmt.Fprintf(buf, format, args...)
-	*bytebuf = append(buf.Bytes(), '\n')
-
-	b.mu.Lock()
-	b.w.Write(*bytebuf)
-	b.mu.Unlock()
-
-	bytebuf.free()
-}
-
-// Logger returns a new logger for a particular subsystem that writes to the
-// Backend b.  A tag describes the subsystem and is included in all log
-// messages.  The logger uses the info verbosity level by default.
-func (b *Backend) Logger(subsystemTag string) Logger {
-	return newSubLog(subsystemTag, b, LevelInfo)
-}
-
-// subLog is a subsystem logger for a Backend.  Implements the Logger interface.
-type subLog struct {
-	lvl atomic.Int32
-	tag string
-	b   *Backend
-}
-
-// newSubLog constructs a new subLog instance.
-func newSubLog(tag string, b *Backend, level Level) *subLog {
-	s := &subLog{
-		tag: tag,
-		b:   b,
-	}
-	s.lvl.Store(int32(level))
-
-	return s
-}
-
-// Trace formats message using the default formats for its operands, prepends
-// the prefix as necessary, and writes to log with LevelTrace.
-//
-// This is part of the Logger interface implementation.
-func (l *subLog) Trace(args ...any) {
-	lvl := l.Level()
-	if lvl <= LevelTrace {
-		l.b.print("TRC", l.tag, args...)
+// NewSLogger constructs a new structured logger from the given Handler.
+func NewSLogger(handler Handler) Logger {
+	return &sLogger{
+		Handler: handler,
+		logger:  slog.New(handler),
 	}
 }
 
@@ -286,197 +44,189 @@ func (l *subLog) Trace(args ...any) {
 // necessary, and writes to log with LevelTrace.
 //
 // This is part of the Logger interface implementation.
-func (l *subLog) Tracef(format string, args ...any) {
-	lvl := l.Level()
-	if lvl <= LevelTrace {
-		l.b.printf("TRC", l.tag, format, args...)
-	}
-}
-
-// Debug formats message using the default formats for its operands, prepends
-// the prefix as necessary, and writes to log with LevelDebug.
-//
-// This is part of the Logger interface implementation.
-func (l *subLog) Debug(args ...any) {
-	lvl := l.Level()
-	if lvl <= LevelDebug {
-		l.b.print("DBG", l.tag, args...)
-	}
+func (l *sLogger) Tracef(format string, params ...any) {
+	l.toSlogf(LevelTrace, format, params...)
 }
 
 // Debugf formats message according to format specifier, prepends the prefix as
 // necessary, and writes to log with LevelDebug.
 //
 // This is part of the Logger interface implementation.
-func (l *subLog) Debugf(format string, args ...any) {
-	lvl := l.Level()
-	if lvl <= LevelDebug {
-		l.b.printf("DBG", l.tag, format, args...)
-	}
-}
-
-// Info formats message using the default formats for its operands, prepends
-// the prefix as necessary, and writes to log with LevelInfo.
-//
-// This is part of the Logger interface implementation.
-func (l *subLog) Info(args ...any) {
-	lvl := l.Level()
-	if lvl <= LevelInfo {
-		l.b.print("INF", l.tag, args...)
-	}
+func (l *sLogger) Debugf(format string, params ...any) {
+	l.toSlogf(LevelDebug, format, params...)
 }
 
 // Infof formats message according to format specifier, prepends the prefix as
 // necessary, and writes to log with LevelInfo.
 //
 // This is part of the Logger interface implementation.
-func (l *subLog) Infof(format string, args ...any) {
-	lvl := l.Level()
-	if lvl <= LevelInfo {
-		l.b.printf("INF", l.tag, format, args...)
-	}
-}
-
-// Warn formats message using the default formats for its operands, prepends
-// the prefix as necessary, and writes to log with LevelWarn.
-//
-// This is part of the Logger interface implementation.
-func (l *subLog) Warn(args ...any) {
-	lvl := l.Level()
-	if lvl <= LevelWarn {
-		l.b.print("WRN", l.tag, args...)
-	}
+func (l *sLogger) Infof(format string, params ...any) {
+	l.toSlogf(LevelInfo, format, params...)
 }
 
 // Warnf formats message according to format specifier, prepends the prefix as
 // necessary, and writes to log with LevelWarn.
 //
 // This is part of the Logger interface implementation.
-func (l *subLog) Warnf(format string, args ...any) {
-	lvl := l.Level()
-	if lvl <= LevelWarn {
-		l.b.printf("WRN", l.tag, format, args...)
-	}
-}
-
-// Error formats message using the default formats for its operands, prepends
-// the prefix as necessary, and writes to log with LevelError.
-//
-// This is part of the Logger interface implementation.
-func (l *subLog) Error(args ...any) {
-	lvl := l.Level()
-	if lvl <= LevelError {
-		l.b.print("ERR", l.tag, args...)
-	}
+func (l *sLogger) Warnf(format string, params ...any) {
+	l.toSlogf(LevelWarn, format, params...)
 }
 
 // Errorf formats message according to format specifier, prepends the prefix as
 // necessary, and writes to log with LevelError.
 //
 // This is part of the Logger interface implementation.
-func (l *subLog) Errorf(format string, args ...any) {
-	lvl := l.Level()
-	if lvl <= LevelError {
-		l.b.printf("ERR", l.tag, format, args...)
-	}
+func (l *sLogger) Errorf(format string, params ...any) {
+	l.toSlogf(LevelError, format, params...)
+}
+
+// Criticalf formats message according to format specifier, prepends the prefix as
+// necessary, and writes to log with LevelCritical.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Criticalf(format string, params ...any) {
+	l.toSlogf(LevelCritical, format, params...)
+}
+
+// Trace formats message using the default formats for its operands, prepends
+// the prefix as necessary, and writes to log with LevelTrace.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Trace(v ...any) {
+	l.toSlog(LevelTrace, v...)
+}
+
+// Debug formats message using the default formats for its operands, prepends
+// the prefix as necessary, and writes to log with LevelDebug.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Debug(v ...any) {
+	l.toSlog(LevelDebug, v...)
+}
+
+// Info formats message using the default formats for its operands, prepends
+// the prefix as necessary, and writes to log with LevelInfo.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Info(v ...any) {
+	l.toSlog(LevelInfo, v...)
+}
+
+// Warn formats message using the default formats for its operands, prepends
+// the prefix as necessary, and writes to log with LevelWarn.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Warn(v ...any) {
+	l.toSlog(LevelWarn, v...)
+}
+
+// Error formats message using the default formats for its operands, prepends
+// the prefix as necessary, and writes to log with LevelError.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Error(v ...any) {
+	l.toSlog(LevelError, v...)
 }
 
 // Critical formats message using the default formats for its operands, prepends
 // the prefix as necessary, and writes to log with LevelCritical.
 //
 // This is part of the Logger interface implementation.
-func (l *subLog) Critical(args ...any) {
-	lvl := l.Level()
-	if lvl <= LevelCritical {
-		l.b.print("CRT", l.tag, args...)
-	}
-}
-
-// Criticalf formats message according to format specifier, prepends the prefix
-// as necessary, and writes to log with LevelCritical.
-//
-// This is part of the Logger interface implementation.
-func (l *subLog) Criticalf(format string, args ...any) {
-	lvl := l.Level()
-	if lvl <= LevelCritical {
-		l.b.printf("CRT", l.tag, format, args...)
-	}
+func (l *sLogger) Critical(v ...any) {
+	l.toSlog(LevelCritical, v...)
 }
 
 // TraceS writes a structured log with the given message and key-value pair
 // attributes with LevelTrace to the log.
 //
 // This is part of the Logger interface implementation.
-func (l *subLog) TraceS(_ context.Context, msg string, attrs ...any) {
-	l.Tracef(msg, attrs...)
+func (l *sLogger) TraceS(ctx context.Context, msg string, attrs ...any) {
+	l.toSlogS(ctx, LevelTrace, msg, attrs...)
 }
 
 // DebugS writes a structured log with the given message and key-value pair
 // attributes with LevelDebug to the log.
 //
 // This is part of the Logger interface implementation.
-func (l *subLog) DebugS(_ context.Context, msg string, attrs ...any) {
-	l.Debugf(msg, attrs...)
+func (l *sLogger) DebugS(ctx context.Context, msg string, attrs ...any) {
+	l.toSlogS(ctx, LevelDebug, msg, attrs...)
 }
 
 // InfoS writes a structured log with the given message and key-value pair
 // attributes with LevelInfo to the log.
 //
 // This is part of the Logger interface implementation.
-func (l *subLog) InfoS(_ context.Context, msg string, attrs ...any) {
-	l.Infof(msg, attrs...)
+func (l *sLogger) InfoS(ctx context.Context, msg string, attrs ...any) {
+	l.toSlogS(ctx, LevelInfo, msg, attrs...)
 }
 
 // WarnS writes a structured log with the given message and key-value pair
 // attributes with LevelWarn to the log.
 //
 // This is part of the Logger interface implementation.
-func (l *subLog) WarnS(_ context.Context, msg string, err error, attrs ...any) {
+func (l *sLogger) WarnS(ctx context.Context, msg string, err error,
+	attrs ...any) {
+
 	if err != nil {
 		attrs = append([]any{slog.String("err", err.Error())}, attrs...)
 	}
-	l.Warnf(msg, attrs...)
+
+	l.toSlogS(ctx, LevelWarn, msg, attrs...)
 }
 
 // ErrorS writes a structured log with the given message and key-value pair
 // attributes with LevelError to the log.
 //
 // This is part of the Logger interface implementation.
-func (l *subLog) ErrorS(_ context.Context, msg string, err error, attrs ...any) {
+func (l *sLogger) ErrorS(ctx context.Context, msg string, err error,
+	attrs ...any) {
+
 	if err != nil {
 		attrs = append([]any{slog.String("err", err.Error())}, attrs...)
 	}
-	l.Errorf(msg, attrs...)
+
+	l.toSlogS(ctx, LevelError, msg, attrs...)
 }
 
 // CriticalS writes a structured log with the given message and key-value pair
 // attributes with LevelCritical to the log.
 //
 // This is part of the Logger interface implementation.
-func (l *subLog) CriticalS(_ context.Context, msg string, err error, attrs ...any) {
+func (l *sLogger) CriticalS(ctx context.Context, msg string, err error,
+	attrs ...any) {
 	if err != nil {
 		attrs = append([]any{slog.String("err", err.Error())}, attrs...)
 	}
-	l.Criticalf(msg, attrs...)
+
+	l.toSlogS(ctx, LevelCritical, msg, attrs...)
 }
 
-// Level returns the current logging level
-//
-// This is part of the Logger interface implementation.
-func (l *subLog) Level() Level {
-	return Level(l.lvl.Load())
+// toSlogf is a helper method that converts an unstructured log call that
+// contains a format string and parameters for the string into the appropriate
+// form expected by the structured logger.
+func (l *sLogger) toSlogf(level Level, format string, params ...any) {
+	l.logger.Log(context.Background(), slog.Level(level),
+		fmt.Sprintf(format, params...))
 }
 
-// SetLevel changes the logging level to the passed level.
-//
-// This is part of the Logger interface implementation.
-func (l *subLog) SetLevel(level Level) {
-	l.lvl.Store(int32(level))
+// toSlog is a helper method that converts an unstructured log call that
+// contains a number of parameters into the appropriate form expected by the
+// structured logger.
+func (l *sLogger) toSlog(level Level, v ...any) {
+	l.logger.Log(context.Background(), slog.Level(level), fmt.Sprint(v...))
 }
 
-// Disabled is a Logger that will never output anything.
-var Disabled Logger
+// toSlogS is a helper method that can be used by all the structured log calls
+// to access the underlying logger.
+func (l *sLogger) toSlogS(ctx context.Context, level Level, msg string,
+	attrs ...any) {
+
+	l.logger.Log(ctx, slog.Level(level), msg, mergeAttrs(ctx, attrs)...)
+}
+
+var _ Logger = (*sLogger)(nil)
 
 func init() {
-	Disabled = newSubLog("", NewBackend(io.Discard), LevelOff)
+	Disabled = NewSLogger(NewDefaultHandler(io.Discard))
+	Disabled.SetLevel(LevelOff)
 }

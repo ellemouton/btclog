@@ -33,107 +33,233 @@
 package btclog
 
 import (
+	"context"
+	"fmt"
 	"io"
-	"os"
-	"runtime"
-	"strings"
-	"time"
+	"log/slog"
 )
 
 // Disabled is a Logger that will never output anything.
 var Disabled Logger
 
-// defaultFlags specifies changes to the default logger behavior.  It is set
-// during package init and configured using the LOGFLAGS environment variable.
-// New logger backends can override these default flags using WithFlags.
-var defaultFlags uint32
+// Handler wraps the slog.Handler interface with a few more methods that we
+// need in order to satisfy the Logger interface.
+type Handler interface {
+	slog.Handler
 
-// Flags to modify Backend's behavior.
-const (
-	// Llongfile modifies the logger output to include full path and line number
-	// of the logging callsite, e.g. /a/b/c/main.go:123.
-	Llongfile uint32 = 1 << iota
+	// Level returns the current logging level of the Handler.
+	Level() Level
 
-	// Lshortfile modifies the logger output to include filename and line number
-	// of the logging callsite, e.g. main.go:123.  Overrides Llongfile.
-	Lshortfile
-)
+	// SetLevel changes the logging level of the Handler to the passed
+	// level.
+	SetLevel(level Level)
 
-// From stdlib log package.
-// Cheap integer to fixed-width decimal ASCII.  Give a negative width to avoid
-// zero-padding.
-func itoa(buf *buffer, i int, wid int) {
-	// Assemble decimal in reverse order.
-	var b [20]byte
-	bp := len(b) - 1
-	for i >= 10 || wid > 1 {
-		wid--
-		q := i / 10
-		b[bp] = byte('0' + i - q*10)
-		bp--
-		i = q
-	}
-	// i < 10
-	b[bp] = byte('0' + i)
-	buf.writeBytes(b[bp:])
+	// SubSystem returns a copy of the given handler but with the new tag.
+	SubSystem(tag string) Handler
 }
 
-// writeTimestamp writes the date in the format 'YYYY-MM-DD hh:mm:ss.sss' to the
-// buffer.
-func writeTimestamp(buf *buffer, t time.Time) {
-	year, month, day := t.Date()
-	hour, min, sec := t.Clock()
-	ms := t.Nanosecond() / 1e6
-
-	itoa(buf, year, 4)
-	buf.writeByte('-')
-	itoa(buf, int(month), 2)
-	buf.writeByte('-')
-	itoa(buf, day, 2)
-	buf.writeByte(' ')
-	itoa(buf, hour, 2)
-	buf.writeByte(':')
-	itoa(buf, min, 2)
-	buf.writeByte(':')
-	itoa(buf, sec, 2)
-	buf.writeByte('.')
-	itoa(buf, ms, 3)
-	buf.writeByte(' ')
+// sLogger is an implementation of Logger backed by a structured sLogger.
+type sLogger struct {
+	Handler
+	logger *slog.Logger
 }
 
-// callsite returns the file name and line number of the callsite to the
-// subsystem logger.
-func callsite(flag uint32, skipDepth int) (string, int) {
-	_, file, line, ok := runtime.Caller(skipDepth)
-	if !ok {
-		return "???", 0
+// NewSLogger constructs a new structured logger from the given Handler.
+func NewSLogger(handler Handler) Logger {
+	return &sLogger{
+		Handler: handler,
+		logger:  slog.New(handler),
 	}
-	if flag&Lshortfile != 0 {
-		short := file
-		for i := len(file) - 1; i > 0; i-- {
-			if os.IsPathSeparator(file[i]) {
-				short = file[i+1:]
-				break
-			}
-		}
-		file = short
-	}
-	return file, line
 }
+
+// Tracef formats message according to format specifier, prepends the prefix as
+// necessary, and writes to log with LevelTrace.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Tracef(format string, params ...any) {
+	l.toSlogf(LevelTrace, format, params...)
+}
+
+// Debugf formats message according to format specifier, prepends the prefix as
+// necessary, and writes to log with LevelDebug.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Debugf(format string, params ...any) {
+	l.toSlogf(LevelDebug, format, params...)
+}
+
+// Infof formats message according to format specifier, prepends the prefix as
+// necessary, and writes to log with LevelInfo.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Infof(format string, params ...any) {
+	l.toSlogf(LevelInfo, format, params...)
+}
+
+// Warnf formats message according to format specifier, prepends the prefix as
+// necessary, and writes to log with LevelWarn.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Warnf(format string, params ...any) {
+	l.toSlogf(LevelWarn, format, params...)
+}
+
+// Errorf formats message according to format specifier, prepends the prefix as
+// necessary, and writes to log with LevelError.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Errorf(format string, params ...any) {
+	l.toSlogf(LevelError, format, params...)
+}
+
+// Criticalf formats message according to format specifier, prepends the prefix as
+// necessary, and writes to log with LevelCritical.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Criticalf(format string, params ...any) {
+	l.toSlogf(LevelCritical, format, params...)
+}
+
+// Trace formats message using the default formats for its operands, prepends
+// the prefix as necessary, and writes to log with LevelTrace.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Trace(v ...any) {
+	l.toSlog(LevelTrace, v...)
+}
+
+// Debug formats message using the default formats for its operands, prepends
+// the prefix as necessary, and writes to log with LevelDebug.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Debug(v ...any) {
+	l.toSlog(LevelDebug, v...)
+}
+
+// Info formats message using the default formats for its operands, prepends
+// the prefix as necessary, and writes to log with LevelInfo.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Info(v ...any) {
+	l.toSlog(LevelInfo, v...)
+}
+
+// Warn formats message using the default formats for its operands, prepends
+// the prefix as necessary, and writes to log with LevelWarn.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Warn(v ...any) {
+	l.toSlog(LevelWarn, v...)
+}
+
+// Error formats message using the default formats for its operands, prepends
+// the prefix as necessary, and writes to log with LevelError.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Error(v ...any) {
+	l.toSlog(LevelError, v...)
+}
+
+// Critical formats message using the default formats for its operands, prepends
+// the prefix as necessary, and writes to log with LevelCritical.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Critical(v ...any) {
+	l.toSlog(LevelCritical, v...)
+}
+
+// TraceS writes a structured log with the given message and key-value pair
+// attributes with LevelTrace to the log.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) TraceS(ctx context.Context, msg string, attrs ...any) {
+	l.toSlogS(ctx, LevelTrace, msg, attrs...)
+}
+
+// DebugS writes a structured log with the given message and key-value pair
+// attributes with LevelDebug to the log.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) DebugS(ctx context.Context, msg string, attrs ...any) {
+	l.toSlogS(ctx, LevelDebug, msg, attrs...)
+}
+
+// InfoS writes a structured log with the given message and key-value pair
+// attributes with LevelInfo to the log.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) InfoS(ctx context.Context, msg string, attrs ...any) {
+	l.toSlogS(ctx, LevelInfo, msg, attrs...)
+}
+
+// WarnS writes a structured log with the given message and key-value pair
+// attributes with LevelWarn to the log.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) WarnS(ctx context.Context, msg string, err error,
+	attrs ...any) {
+
+	if err != nil {
+		attrs = append([]any{slog.String("err", err.Error())}, attrs...)
+	}
+
+	l.toSlogS(ctx, LevelWarn, msg, attrs...)
+}
+
+// ErrorS writes a structured log with the given message and key-value pair
+// attributes with LevelError to the log.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) ErrorS(ctx context.Context, msg string, err error,
+	attrs ...any) {
+
+	if err != nil {
+		attrs = append([]any{slog.String("err", err.Error())}, attrs...)
+	}
+
+	l.toSlogS(ctx, LevelError, msg, attrs...)
+}
+
+// CriticalS writes a structured log with the given message and key-value pair
+// attributes with LevelCritical to the log.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) CriticalS(ctx context.Context, msg string, err error,
+	attrs ...any) {
+	if err != nil {
+		attrs = append([]any{slog.String("err", err.Error())}, attrs...)
+	}
+
+	l.toSlogS(ctx, LevelCritical, msg, attrs...)
+}
+
+// toSlogf is a helper method that converts an unstructured log call that
+// contains a format string and parameters for the string into the appropriate
+// form expected by the structured logger.
+func (l *sLogger) toSlogf(level Level, format string, params ...any) {
+	l.logger.Log(context.Background(), slog.Level(level),
+		fmt.Sprintf(format, params...))
+}
+
+// toSlog is a helper method that converts an unstructured log call that
+// contains a number of parameters into the appropriate form expected by the
+// structured logger.
+func (l *sLogger) toSlog(level Level, v ...any) {
+	l.logger.Log(context.Background(), slog.Level(level), fmt.Sprint(v...))
+}
+
+// toSlogS is a helper method that can be used by all the structured log calls
+// to access the underlying logger.
+func (l *sLogger) toSlogS(ctx context.Context, level Level, msg string,
+	attrs ...any) {
+
+	l.logger.Log(ctx, slog.Level(level), msg, mergeAttrs(ctx, attrs)...)
+}
+
+var _ Logger = (*sLogger)(nil)
 
 func init() {
 	// Initialise the Disabled logger.
 	Disabled = NewSLogger(NewDefaultHandler(io.Discard))
 	Disabled.SetLevel(LevelOff)
-
-	// Read logger flags from the LOGFLAGS environment variable. Multiple
-	// flags can be set at once, separated by commas.
-	for _, f := range strings.Split(os.Getenv("LOGFLAGS"), ",") {
-		switch f {
-		case "longfile":
-			defaultFlags |= Llongfile
-		case "shortfile":
-			defaultFlags |= Lshortfile
-		}
-	}
 }

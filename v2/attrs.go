@@ -21,6 +21,18 @@ func Hex6(key string, value []byte) slog.Attr {
 	return slog.String(key, hex.EncodeToString(value[:6]))
 }
 
+// Fmt returns a slog.Attr with the formatted message which is only computed
+// when needed.
+func Fmt(key string, msg string, params ...any) slog.Attr {
+	return slog.Any(key, Sprintf(msg, params...))
+}
+
+// ClosureAttr returns an slog attribute that will only perform the given
+// logging operation if the corresponding log level is enabled.
+func ClosureAttr(key string, compute func() string) slog.Attr {
+	return slog.Any(key, NewClosure(compute))
+}
+
 type attrsKey struct{}
 
 // WithCtx returns a copy of the context with which the logging attributes are

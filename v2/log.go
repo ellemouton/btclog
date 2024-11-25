@@ -26,6 +26,8 @@ type Handler interface {
 
 	// SubSystem returns a copy of the given handler but with the new tag.
 	SubSystem(tag string) Handler
+
+	WithPrefix(prefix string) Handler
 }
 
 // sLogger is an implementation of Logger backed by a structured sLogger.
@@ -52,7 +54,7 @@ func NewSLogger(handler Handler) Logger {
 		handler: handler,
 		logger:  slog.New(handler),
 		ctx:     context.Background(),
-		level:   int64(levelInfo),
+		level:   int64(toSlogLevel(handler.Level())),
 	}
 }
 
@@ -303,6 +305,14 @@ func (l *sLogger) Level() btclog.Level {
 func (l *sLogger) SetLevel(level btclog.Level) {
 	atomic.StoreInt64(&l.level, int64(toSlogLevel(level)))
 	l.handler.SetLevel(level)
+}
+
+func (l *sLogger) SubSystem(tag string) Logger {
+	return NewSLogger(l.handler.SubSystem(tag))
+}
+
+func (l *sLogger) WithPrefix(prefix string) Logger {
+	return NewSLogger(l.handler.WithPrefix(prefix))
 }
 
 var _ Logger = (*sLogger)(nil)

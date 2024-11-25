@@ -86,14 +86,37 @@ var tests = []struct {
 	{
 		name: "Sub-system tag",
 		handlerConstructor: func(w io.Writer) Handler {
-			h := NewDefaultHandler(w, WithNoTimestamp())
-			return h.SubSystem("SUBS")
+			return NewDefaultHandler(w, WithNoTimestamp())
 		},
-		level: LevelInfo,
+		level: LevelTrace,
 		logFunc: func(t *testing.T, log Logger) {
-			log.Info("Test Basic Log")
+			subLog := log.SubSystem("SUBS")
+			subLog.Tracef("Test Basic Log")
 		},
-		expectedLog: `[INF] SUBS: Test Basic Log
+		expectedLog: `[TRC] SUBS: Test Basic Log
+`,
+	},
+	{
+		name: "Prefixed logging",
+		handlerConstructor: func(w io.Writer) Handler {
+			return NewDefaultHandler(w, WithNoTimestamp())
+		},
+		level: LevelTrace,
+		logFunc: func(t *testing.T, log Logger) {
+			// We use trace level to ensure that logger level is
+			// carried over to the new prefixed logger.
+			log.Tracef("Test Basic Log")
+
+			subLog := log.SubSystem("SUBS")
+			subLog.Tracef("Test Basic Log")
+
+			pLog := subLog.WithPrefix("(Client)")
+			pLog.Tracef("Test Basic Log")
+
+		},
+		expectedLog: `[TRC]: Test Basic Log
+[TRC] SUBS: Test Basic Log
+[TRC] SUBS: (Client) Test Basic Log
 `,
 	},
 	{

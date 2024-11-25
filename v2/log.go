@@ -6,6 +6,7 @@ import (
 	"github.com/btcsuite/btclog"
 	"io"
 	"log/slog"
+	"sync/atomic"
 )
 
 // Disabled is a Logger that will never output anything.
@@ -29,8 +30,10 @@ type Handler interface {
 
 // sLogger is an implementation of Logger backed by a structured sLogger.
 type sLogger struct {
-	Handler
-	logger *slog.Logger
+	level int64
+
+	handler Handler
+	logger  *slog.Logger
 
 	// ctx is a context that will be passed to the non-structured logging
 	// calls for backwards compatibility with the old v1 Logger interface.
@@ -46,9 +49,10 @@ type sLogger struct {
 // NewSLogger constructs a new structured logger from the given Handler.
 func NewSLogger(handler Handler) Logger {
 	return &sLogger{
-		Handler: handler,
+		handler: handler,
 		logger:  slog.New(handler),
 		ctx:     context.Background(),
+		level:   int64(levelInfo),
 	}
 }
 
@@ -57,7 +61,7 @@ func NewSLogger(handler Handler) Logger {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Tracef(format string, params ...any) {
-	if !l.Enabled(l.ctx, levelTrace) {
+	if atomic.LoadInt64(&l.level) > int64(levelTrace) {
 		return
 	}
 
@@ -69,7 +73,7 @@ func (l *sLogger) Tracef(format string, params ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Debugf(format string, params ...any) {
-	if !l.Enabled(l.ctx, levelDebug) {
+	if atomic.LoadInt64(&l.level) > int64(levelDebug) {
 		return
 	}
 
@@ -81,7 +85,7 @@ func (l *sLogger) Debugf(format string, params ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Infof(format string, params ...any) {
-	if !l.Enabled(l.ctx, levelInfo) {
+	if atomic.LoadInt64(&l.level) > int64(levelInfo) {
 		return
 	}
 
@@ -93,7 +97,7 @@ func (l *sLogger) Infof(format string, params ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Warnf(format string, params ...any) {
-	if !l.Enabled(l.ctx, levelWarn) {
+	if atomic.LoadInt64(&l.level) > int64(levelWarn) {
 		return
 	}
 
@@ -105,7 +109,7 @@ func (l *sLogger) Warnf(format string, params ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Errorf(format string, params ...any) {
-	if !l.Enabled(l.ctx, levelError) {
+	if atomic.LoadInt64(&l.level) > int64(levelError) {
 		return
 	}
 
@@ -117,7 +121,7 @@ func (l *sLogger) Errorf(format string, params ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Criticalf(format string, params ...any) {
-	if !l.Enabled(l.ctx, levelCritical) {
+	if atomic.LoadInt64(&l.level) > int64(levelCritical) {
 		return
 	}
 
@@ -129,7 +133,7 @@ func (l *sLogger) Criticalf(format string, params ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Trace(v ...any) {
-	if !l.Enabled(l.ctx, levelTrace) {
+	if atomic.LoadInt64(&l.level) > int64(levelTrace) {
 		return
 	}
 
@@ -141,7 +145,7 @@ func (l *sLogger) Trace(v ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Debug(v ...any) {
-	if !l.Enabled(l.ctx, levelDebug) {
+	if atomic.LoadInt64(&l.level) > int64(levelDebug) {
 		return
 	}
 
@@ -153,7 +157,7 @@ func (l *sLogger) Debug(v ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Info(v ...any) {
-	if !l.Enabled(l.ctx, levelInfo) {
+	if atomic.LoadInt64(&l.level) > int64(levelInfo) {
 		return
 	}
 
@@ -165,7 +169,7 @@ func (l *sLogger) Info(v ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Warn(v ...any) {
-	if !l.Enabled(l.ctx, levelWarn) {
+	if atomic.LoadInt64(&l.level) > int64(levelWarn) {
 		return
 	}
 
@@ -177,7 +181,7 @@ func (l *sLogger) Warn(v ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Error(v ...any) {
-	if !l.Enabled(l.ctx, levelError) {
+	if atomic.LoadInt64(&l.level) > int64(levelError) {
 		return
 	}
 
@@ -189,7 +193,7 @@ func (l *sLogger) Error(v ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Critical(v ...any) {
-	if !l.Enabled(l.ctx, levelCritical) {
+	if atomic.LoadInt64(&l.level) > int64(levelCritical) {
 		return
 	}
 
@@ -201,7 +205,7 @@ func (l *sLogger) Critical(v ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) TraceS(ctx context.Context, msg string, attrs ...any) {
-	if !l.Enabled(ctx, levelTrace) {
+	if atomic.LoadInt64(&l.level) > int64(levelTrace) {
 		return
 	}
 
@@ -213,7 +217,7 @@ func (l *sLogger) TraceS(ctx context.Context, msg string, attrs ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) DebugS(ctx context.Context, msg string, attrs ...any) {
-	if !l.Enabled(ctx, levelDebug) {
+	if atomic.LoadInt64(&l.level) > int64(levelDebug) {
 		return
 	}
 
@@ -225,7 +229,7 @@ func (l *sLogger) DebugS(ctx context.Context, msg string, attrs ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) InfoS(ctx context.Context, msg string, attrs ...any) {
-	if !l.Enabled(ctx, levelInfo) {
+	if atomic.LoadInt64(&l.level) > int64(levelInfo) {
 		return
 	}
 
@@ -239,7 +243,7 @@ func (l *sLogger) InfoS(ctx context.Context, msg string, attrs ...any) {
 func (l *sLogger) WarnS(ctx context.Context, msg string, err error,
 	attrs ...any) {
 
-	if !l.Enabled(ctx, levelWarn) {
+	if atomic.LoadInt64(&l.level) > int64(levelWarn) {
 		return
 	}
 
@@ -257,7 +261,7 @@ func (l *sLogger) WarnS(ctx context.Context, msg string, err error,
 func (l *sLogger) ErrorS(ctx context.Context, msg string, err error,
 	attrs ...any) {
 
-	if !l.Enabled(ctx, levelError) {
+	if atomic.LoadInt64(&l.level) > int64(levelError) {
 		return
 	}
 
@@ -275,7 +279,7 @@ func (l *sLogger) ErrorS(ctx context.Context, msg string, err error,
 func (l *sLogger) CriticalS(ctx context.Context, msg string, err error,
 	attrs ...any) {
 
-	if !l.Enabled(ctx, levelCritical) {
+	if atomic.LoadInt64(&l.level) > int64(levelCritical) {
 		return
 	}
 
@@ -284,6 +288,21 @@ func (l *sLogger) CriticalS(ctx context.Context, msg string, err error,
 	}
 
 	l.logger.Log(ctx, levelCritical, msg, mergeAttrs(ctx, attrs)...)
+}
+
+// Level returns the current logging level of the Handler.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) Level() btclog.Level {
+	return fromSlogLevel(slog.Level(atomic.LoadInt64(&l.level)))
+}
+
+// SetLevel changes the logging level of the Handler to the passed level.
+//
+// This is part of the Logger interface implementation.
+func (l *sLogger) SetLevel(level btclog.Level) {
+	atomic.StoreInt64(&l.level, int64(toSlogLevel(level)))
+	l.handler.SetLevel(level)
 }
 
 var _ Logger = (*sLogger)(nil)

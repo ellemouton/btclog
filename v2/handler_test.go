@@ -71,7 +71,7 @@ var tests = []struct {
 		handlerConstructor: func(w io.Writer) Handler {
 			return NewDefaultHandler(
 				w, WithNoTimestamp(),
-				WithCallSiteSkipDepth(7),
+				WithCallSiteSkipDepth(6),
 				WithCallerFlags(Lshortfile),
 			)
 		},
@@ -248,7 +248,7 @@ var tests = []struct {
 		handlerConstructor: func(w io.Writer) Handler {
 			return NewDefaultHandler(
 				w, WithNoTimestamp(),
-				WithCallSiteSkipDepth(7),
+				WithCallSiteSkipDepth(6),
 				WithCallerFlags(Lshortfile),
 				WithStyledKeys(func(s string) string {
 					return s

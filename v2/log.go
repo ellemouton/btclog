@@ -57,7 +57,11 @@ func NewSLogger(handler Handler) Logger {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Tracef(format string, params ...any) {
-	l.toSlogf(levelTrace, format, params...)
+	if !l.Enabled(l.ctx, levelTrace) {
+		return
+	}
+
+	l.logger.Log(l.ctx, levelTrace, fmt.Sprintf(format, params...))
 }
 
 // Debugf creates a formatted message from the to format specifier along with
@@ -65,7 +69,11 @@ func (l *sLogger) Tracef(format string, params ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Debugf(format string, params ...any) {
-	l.toSlogf(levelDebug, format, params...)
+	if !l.Enabled(l.ctx, levelDebug) {
+		return
+	}
+
+	l.logger.Log(l.ctx, levelDebug, fmt.Sprintf(format, params...))
 }
 
 // Infof creates a formatted message from the to format specifier along with
@@ -73,7 +81,11 @@ func (l *sLogger) Debugf(format string, params ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Infof(format string, params ...any) {
-	l.toSlogf(levelInfo, format, params...)
+	if !l.Enabled(l.ctx, levelInfo) {
+		return
+	}
+
+	l.logger.Log(l.ctx, levelInfo, fmt.Sprintf(format, params...))
 }
 
 // Warnf creates a formatted message from the to format specifier along with
@@ -81,7 +93,11 @@ func (l *sLogger) Infof(format string, params ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Warnf(format string, params ...any) {
-	l.toSlogf(levelWarn, format, params...)
+	if !l.Enabled(l.ctx, levelWarn) {
+		return
+	}
+
+	l.logger.Log(l.ctx, levelWarn, fmt.Sprintf(format, params...))
 }
 
 // Errorf creates a formatted message from the to format specifier along with
@@ -89,7 +105,11 @@ func (l *sLogger) Warnf(format string, params ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Errorf(format string, params ...any) {
-	l.toSlogf(levelError, format, params...)
+	if !l.Enabled(l.ctx, levelError) {
+		return
+	}
+
+	l.logger.Log(l.ctx, levelError, fmt.Sprintf(format, params...))
 }
 
 // Criticalf creates a formatted message from the to format specifier along
@@ -97,7 +117,11 @@ func (l *sLogger) Errorf(format string, params ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Criticalf(format string, params ...any) {
-	l.toSlogf(levelCritical, format, params...)
+	if !l.Enabled(l.ctx, levelCritical) {
+		return
+	}
+
+	l.logger.Log(l.ctx, levelCritical, fmt.Sprintf(format, params...))
 }
 
 // Trace formats a message using the default formats for its operands, prepends
@@ -105,7 +129,11 @@ func (l *sLogger) Criticalf(format string, params ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Trace(v ...any) {
-	l.toSlog(levelTrace, v...)
+	if !l.Enabled(l.ctx, levelTrace) {
+		return
+	}
+
+	l.logger.Log(l.ctx, levelTrace, fmt.Sprint(v...))
 }
 
 // Debug formats a message using the default formats for its operands, prepends
@@ -113,7 +141,11 @@ func (l *sLogger) Trace(v ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Debug(v ...any) {
-	l.toSlog(levelDebug, v...)
+	if !l.Enabled(l.ctx, levelDebug) {
+		return
+	}
+
+	l.logger.Log(l.ctx, levelDebug, fmt.Sprint(v...))
 }
 
 // Info formats a message using the default formats for its operands, prepends
@@ -121,7 +153,11 @@ func (l *sLogger) Debug(v ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Info(v ...any) {
-	l.toSlog(levelInfo, v...)
+	if !l.Enabled(l.ctx, levelInfo) {
+		return
+	}
+
+	l.logger.Log(l.ctx, levelInfo, fmt.Sprint(v...))
 }
 
 // Warn formats a message using the default formats for its operands, prepends
@@ -129,7 +165,11 @@ func (l *sLogger) Info(v ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Warn(v ...any) {
-	l.toSlog(levelWarn, v...)
+	if !l.Enabled(l.ctx, levelWarn) {
+		return
+	}
+
+	l.logger.Log(l.ctx, levelWarn, fmt.Sprint(v...))
 }
 
 // Error formats a message using the default formats for its operands, prepends
@@ -137,7 +177,11 @@ func (l *sLogger) Warn(v ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Error(v ...any) {
-	l.toSlog(levelError, v...)
+	if !l.Enabled(l.ctx, levelError) {
+		return
+	}
+
+	l.logger.Log(l.ctx, levelError, fmt.Sprint(v...))
 }
 
 // Critical formats a message using the default formats for its operands,
@@ -145,7 +189,11 @@ func (l *sLogger) Error(v ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) Critical(v ...any) {
-	l.toSlog(levelCritical, v...)
+	if !l.Enabled(l.ctx, levelCritical) {
+		return
+	}
+
+	l.logger.Log(l.ctx, levelCritical, fmt.Sprint(v...))
 }
 
 // TraceS writes a structured log with the given message and key-value pair
@@ -153,7 +201,11 @@ func (l *sLogger) Critical(v ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) TraceS(ctx context.Context, msg string, attrs ...any) {
-	l.toSlogS(ctx, levelTrace, msg, attrs...)
+	if !l.Enabled(ctx, levelTrace) {
+		return
+	}
+
+	l.logger.Log(ctx, levelTrace, msg, mergeAttrs(ctx, attrs)...)
 }
 
 // DebugS writes a structured log with the given message and key-value pair
@@ -161,7 +213,11 @@ func (l *sLogger) TraceS(ctx context.Context, msg string, attrs ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) DebugS(ctx context.Context, msg string, attrs ...any) {
-	l.toSlogS(ctx, levelDebug, msg, attrs...)
+	if !l.Enabled(ctx, levelDebug) {
+		return
+	}
+
+	l.logger.Log(ctx, levelDebug, msg, mergeAttrs(ctx, attrs)...)
 }
 
 // InfoS writes a structured log with the given message and key-value pair
@@ -169,7 +225,11 @@ func (l *sLogger) DebugS(ctx context.Context, msg string, attrs ...any) {
 //
 // This is part of the Logger interface implementation.
 func (l *sLogger) InfoS(ctx context.Context, msg string, attrs ...any) {
-	l.toSlogS(ctx, levelInfo, msg, attrs...)
+	if !l.Enabled(ctx, levelInfo) {
+		return
+	}
+
+	l.logger.Log(ctx, levelInfo, msg, mergeAttrs(ctx, attrs)...)
 }
 
 // WarnS writes a structured log with the given message and key-value pair
@@ -179,11 +239,15 @@ func (l *sLogger) InfoS(ctx context.Context, msg string, attrs ...any) {
 func (l *sLogger) WarnS(ctx context.Context, msg string, err error,
 	attrs ...any) {
 
+	if !l.Enabled(ctx, levelWarn) {
+		return
+	}
+
 	if err != nil {
 		attrs = append([]any{slog.String("err", err.Error())}, attrs...)
 	}
 
-	l.toSlogS(ctx, levelWarn, msg, attrs...)
+	l.logger.Log(ctx, levelWarn, msg, mergeAttrs(ctx, attrs)...)
 }
 
 // ErrorS writes a structured log with the given message and key-value pair
@@ -193,11 +257,15 @@ func (l *sLogger) WarnS(ctx context.Context, msg string, err error,
 func (l *sLogger) ErrorS(ctx context.Context, msg string, err error,
 	attrs ...any) {
 
+	if !l.Enabled(ctx, levelError) {
+		return
+	}
+
 	if err != nil {
 		attrs = append([]any{slog.String("err", err.Error())}, attrs...)
 	}
 
-	l.toSlogS(ctx, levelError, msg, attrs...)
+	l.logger.Log(ctx, levelError, msg, mergeAttrs(ctx, attrs)...)
 }
 
 // CriticalS writes a structured log with the given message and key-value pair
@@ -206,45 +274,16 @@ func (l *sLogger) ErrorS(ctx context.Context, msg string, err error,
 // This is part of the Logger interface implementation.
 func (l *sLogger) CriticalS(ctx context.Context, msg string, err error,
 	attrs ...any) {
+
+	if !l.Enabled(ctx, levelCritical) {
+		return
+	}
+
 	if err != nil {
 		attrs = append([]any{slog.String("err", err.Error())}, attrs...)
 	}
 
-	l.toSlogS(ctx, levelCritical, msg, attrs...)
-}
-
-// toSlogf is a helper method that converts an unstructured log call that
-// contains a format string and parameters for the string into the appropriate
-// form expected by the structured logger.
-func (l *sLogger) toSlogf(level slog.Level, format string, params ...any) {
-	if !l.Enabled(l.ctx, level) {
-		return
-	}
-
-	l.logger.Log(l.ctx, level, fmt.Sprintf(format, params...))
-}
-
-// toSlog is a helper method that converts an unstructured log call that
-// contains a number of parameters into the appropriate form expected by the
-// structured logger.
-func (l *sLogger) toSlog(level slog.Level, v ...any) {
-	if !l.Enabled(l.ctx, level) {
-		return
-	}
-
-	l.logger.Log(l.ctx, level, fmt.Sprint(v...))
-}
-
-// toSlogS is a helper method that can be used by all the structured log calls
-// to access the underlying logger.
-func (l *sLogger) toSlogS(ctx context.Context, level slog.Level, msg string,
-	attrs ...any) {
-
-	if !l.Enabled(ctx, level) {
-		return
-	}
-
-	l.logger.Log(ctx, level, msg, mergeAttrs(ctx, attrs)...)
+	l.logger.Log(ctx, levelCritical, msg, mergeAttrs(ctx, attrs)...)
 }
 
 var _ Logger = (*sLogger)(nil)
